@@ -1,0 +1,49 @@
+---
+
+
+ - name: nxos connect
+   hosts: nxos1
+   gather_facts: no
+
+   roles:
+     - ansible-network.network-engine
+
+   tasks:
+    - name: Gather Min Facts
+      nxos_facts:
+          gather_subset: min
+          
+    - name: Capture show ip int brief
+      nxos_command:
+           commands:
+              - show ip interface brief
+      register: out
+
+#    - name: Display out variable
+#      debug: var=out.stdout
+    - name: Show facts
+      debug: var=ansible_facts 
+
+
+    - name: PARSE THE RAW OUTPUT
+      command_parser:
+        file: "parsers/nxos/show_ip_interface_brief.yaml"
+        content: "{{ out.stdout[0] }}"
+    
+    - name: DISPLAY THE DATA
+      debug: 
+          msg: "Switch: {{ansible_facts.net_hostname}}, Interface: {{ item.values()[0].data.name }} State: {{ item.values()[0].data.protocol_state }} IP Address: {{ item.values()[0].data.ip }}"
+      loop: "{{ ip_interface_facts }}"
+      
+
+
+#      with_items: "{{ ip_interface_facts[0] }}"
+
+#    - name: set
+#      set_fact:
+#         outtt: "{{ ip_interface_facts[0] }}"
+
+#    - name: DIsplay Rows
+#      debug: 
+#          msg: "asdsad {{ item }}"
+#      with_items: "{{ ip_interface_facts |dict2items }}"
