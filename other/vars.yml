@@ -1,0 +1,108 @@
+PRINT_DEBUG: False
+DIR_ROOT: ./
+DIR_PRE: working/pre_capture
+DIR_POST: working/post_capture
+DIR_PREP: working/prep
+FILE_VLAN_INFO: working/vlan_info.yml
+DC_AS: 988
+
+
+
+
+
+DC_NS_PO_TO_GW01_PAE: port-channel44
+DC_NS_PO_TO_GW01_PROD_SITE1:
+DC_NS_PO_TO_GW01_PROD_SITE2:
+
+
+### BACK and FRONT PO or INTERFACES. The corresponding entry will be selected depending upon the SITE variable that is specified below
+DC_FW_BACK_PO: port-channel34
+DC_FW_FRONT_PO: port-channel35
+DC_FW_FRONT_SITE3_INT: Ethernet1/2
+DC_FW_BACK_SITE3_INT: Ethernet1/1
+
+
+DC_NS_RMAP_NAME: rm-1
+DC_NS_PREFIX_NAME: pl-1
+ROUTE_REMARK_PREFIX: FW-PL-1
+
+
+### The following is utilised in Template to generate Config. Variable Site defines the site and the corresponding Front IP is used to set next hop for static floating route.
+DC_SITE1_NS_FW_FRONT_IP: 192.0.2.10
+DC_SITE2_NS_FW_FRONT_IP: 192.0.2.20
+DC_TEST_ENV_NS_FW_FRONT_IP: 192.0.2.30
+
+
+# Used in Template in generating config. Should not have to change
+STATIC_ROUTE_PREF: "250"
+
+# Used in Template to generate config. Should never have to change
+DC_VRF: VRF1
+
+# In a Virtual Testing topology, this will be GigabitEthernet0/1.
+FW_USER_CONTEXT_BACK_INTF: GigabitEthernet0/1
+
+FW_CONTEXT_NAME: CONTEXT1
+
+# Security Level on Back interface. Should always be set to 80 by default
+FW_BACK_INT_SEC_LEVEL: 80
+
+# Note that Max MTU on ASAv should be 9000. Max MTU on hardware appliances though is 9184.
+FW_BACK_INT_MTU: 9000
+
+# Topology Options are "virtual" or "hardware". Virtual topology has a cutdown ASAv feature set which impacts what config is prepared and applied. E.g. We dont use Port Channels in Virtual. Nor do we need to generate system context config for virtual.
+TOPOLOGY: virtual
+
+# Setting the site is relevant to determine which FRONT IP to use. Current options are SITE1, SITE2
+SITE: TEST_ENV
+
+# update the list below to include all VLAN numbers in scope for this migration.
+vlan_list:
+  - 161
+  - 142
+  - 101
+  - 161
+  - 142
+  - 102
+  - 142
+  - 102
+  - 103
+  - 104
+  - 105
+  - 500
+  - 501
+  - 502
+  - 503
+  - 504
+  - 505
+  - 506
+  - 507
+  - 508
+  - 509
+  - 510
+  - 511
+  - 512
+  - 513
+  - 514
+  - 515
+  - 516
+  - 517
+  - 518
+  - 519
+  - 520
+  - 521
+  - 522
+  - 523
+  - 524
+  - 525
+  - 526
+  - 527
+  - 528
+  - 529
+  - 530
+  - 531
+  - 532
+  - 533
+  - 534
+  - 535
+

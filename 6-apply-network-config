@@ -1,0 +1,17 @@
+# Playbook: Apply Pre-Migration Configuration to Leaf Switches
+# Description: Applies previously generated configuration files to target leaf switches.
+
+- name: Apply Pre-Migration Config to Leaf Switches
+  hosts: leaf_switches
+  gather_facts: no
+
+  vars_files:
+    - vars.yml
+
+  tasks:
+
+    # Step 1: Apply configuration using pre-generated file
+    - name: Apply configuration from prep file
+      nxos_config:
+        match: none
+        src: "{{ DIR_ROOT }}/{{ DIR_PREP }}/{{ inventory_hostname }}-prep.cfg"

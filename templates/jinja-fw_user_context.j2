@@ -1,0 +1,37 @@
+!
+!
+{% if TOPOLOGY == 'virtual' %}
+interface GigabitEthernet0/1.{{item.vlan}}
+ shutdown
+ vlan {{item.vlan}}
+ description IF6-{{SITE}}-FW-{{item.vlan_detail['vlanshowbr-vlanname']}}
+ nameif IF6-{{SITE}}-FW-{{item.vlan_detail['vlanshowbr-vlanname']}}
+ security-level {{FW_BACK_INT_SEC_LEVEL}}
+ mac-address {{item.vrrp.sh_vmac}}
+ ip address {{item.vrrp.sh_vip_addr}} {{item.netmask}} standby {{item.cidr1 |ipaddr('-3') | ipaddr('address')}}
+{% elif TOPOLOGY == 'hardware' %}
+interface Port-Channel10.{{item.vlan}}
+ shutdown
+ description IF6-{{SITE}}-FW-{{item.vlan_detail['vlanshowbr-vlanname']}}
+ nameif IF6-{{SITE}}-FW-{{item.vlan_detail['vlanshowbr-vlanname']}}
+ security-level {{FW_BACK_INT_SEC_LEVEL}}
+ mac-address {{item.vrrp.sh_vmac}}
+ ip address {{item.vrrp.sh_vip_addr}} {{item.netmask}}
+{% endif %}
+!
+mtu IF6-{{SITE}}-FW-{{item.vlan_detail['vlanshowbr-vlanname']}} {{FW_BACK_INT_MTU}}
+!
+sysopt noproxyarp IF6-{{SITE}}-FW-{{item.vlan_detail['vlanshowbr-vlanname']}}
+!
+fragment chain 1 IF6-{{SITE}}-FW-{{item.vlan_detail['vlanshowbr-vlanname']}}
+!
+access-list acl-tcp-bypass extended permit tcp {{item.netaddr}} {{item.netmask}} any
+access-list acl-tcp-bypass extended permit tcp any {{item.netaddr}} {{item.netmask}}
+!
+class-map cm-tcp-bypass
+ match access-list acl-tcp-bypass
+!
+policy-map global_policy
+ class cm-tcp-bypass
+  set connection advanced-options tcp-state-bypass
+!

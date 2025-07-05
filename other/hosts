@@ -1,0 +1,67 @@
+[rtrs]
+testrtr1 ansible_host=192.0.2.100 console_port=5033 
+
+[asav]
+fw01_admin ansible_host=192.0.2.101 console_port=5016 leaf_type=fw
+fw02_admin ansible_host=192.0.2.102 console_port=5017 leaf_type=fw
+
+[leafs]
+leaf01 ansible_host=192.0.2.33 console_port=5011
+leaf02 ansible_host=192.0.2.34 console_port=5012
+leaf03 ansible_host=192.0.2.41 console_port=5013 leaf_type=dc_ns site_location=burwood
+leaf04 ansible_host=192.0.2.42 console_port=5014 leaf_type=dc_ns site_location=burwood
+gw01   ansible_host=192.0.2.43 console_port=5015 leaf_type=dc_gw site_location=burwood
+gw02   ansible_host=192.0.2.44 console_port=5018 leaf_type=dc_gw site_location=burwood
+
+[spines]
+spine01 ansible_host=192.0.2.31 console_port=5020 
+spine02 ansible_host=192.0.2.32 console_port=5021
+
+[rtrs:vars]
+ansible_network_os="ios"
+ansible_net_os="ios"
+image_style="iosv_l3"
+
+[asav:vars]
+ansible_network_os="asa"
+ansible_net_os="asav"
+ansible_user=gns3
+ansible_password=gns3
+ansible_connection=network_cli
+ansible_become=yes
+ansible_become_password=gns3
+ansible_ssh_common_args='-o ProxyCommand="sshpass -p gns3 ssh -o StrictHostKeyChecking=no -W %h:%p -q gns3@192.0.2.200"'
+ansible_host_key_auto_add=yes
+ansible_command_timeout=60
+
+
+[leafs:vars]
+ansible_network_os=nxos
+ansible_net_os=nxos
+
+[spines:vars]
+ansible_network_os=nxos
+ansible_net_os=nxos
+
+[nxos:children]
+spines
+leafs
+
+[nxos:vars]
+ansible_user=gns3
+ansible_password=gns3
+ansible_connection=network_cli
+ansible_network_os=nxos
+ansible_become=no
+ansible_ssh_common_args='-o ProxyCommand="sshpass -p gns3 ssh -o StrictHostKeyChecking=no -W %h:%p -q gns3@192.0.2.200"'
+ansible_host_key_auto_add=yes
+ansible_command_timeout=60
+
+[all:vars]
+ansible_user=gns3
+ansible_password=gns3
+ansible_connection=network_cli
+ansible_become=no
+ansible_command_timeout=60
+ansible_ssh_common_args='-o ProxyCommand="sshpass -p gns3 ssh -o StrictHostKeyChecking=no -W %h:%p -q gns3@192.0.2.200"'
+ansible_python_interpreter=/usr/local/bin/python

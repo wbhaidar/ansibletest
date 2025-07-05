@@ -1,0 +1,131 @@
+# Playbook: Collect Network Info from various network devices
+# Description: This playbook gathers configuration and interface data from generic core, edge, and gateway devices.
+
+- name: Collect Pre-Migration Network Data
+  hosts: all_network_devices
+  gather_facts: no
+
+  vars_files:
+    - vars.yml
+
+  vars:
+    vl: "Vlan"
+    vlan_info: "{{ lookup('file', DIR_ROOT ~ '/' ~ FILE_VLAN_INFO) }}"
+
+  tasks:
+
+    # Step 1: Capture current timestamp
+    - name: Get timestamp from the system
+      shell: "date +%Y-%m-%d@%H:%M:%S"
+      register: tstamp_out
+
+    - name: Save timestamp as a fact
+      set_fact:
+        tstamp: "{{ tstamp_out.stdout }}"
+
+    # Step 2: Debug loaded VLAN info (optional)
+    - name: Debug VLAN data loaded from file
+      debug: var=vlan_info
+      when: PRINT_DEBUG | default(False)
+
+    # Step 3: Save running configuration of devices
+    - name: Save device configuration to local backup
+      nxos_config:
+        save_when: always
+        backup: yes
+        backup_options:
+          dir_path: "{{ DIR_ROOT }}/{{ DIR_PRE }}"
+      register: config_backup
+
+    - name: Debug configuration backup result (optional)
+      debug: var=config_backup
+      when: PRINT_DEBUG | default(False)
+
+    # Step 4: Collect interface state data from edge devices
+    - name: Collect interface and status data (edge devices only)
+      nxos_command:
+        commands:
+          - show ip int brief vrf all
+          - show int status up
+      when: "'edge' in inventory_hostname"
+      register: edge_int_output
+
+    - name: Save edge interface data to local file
+      blockinfile:
+        create: yes
+        marker: "### {mark}  BLOCK GROUP 1"
+        path: "{{ DIR_ROOT }}/{{ DIR_PRE }}/{{ inventory_hostname }}_interfaces"
+        block: |
+          ### show ip int brief vrf all
+          {{ edge_int_output.stdout[0] }}
+          ###
+          ### show int status up
+          {{ edge_int_output.stdout[1] }}
+          ###
+      when: "'edge' in inventory_hostname"
+
+    - name: Debug edge interface data (optional)
+      debug: var=edge_int_output
+      when: PRINT_DEBUG | default(False)
+
+    # Step 5: Collect VLAN-specific routing and VXLAN info (edge devices only)
+    - name: Collect per-VLAN data from edge devices
+      nxos_command:
+        commands:
+          - show ip route {{ item.cidrnet }} vrf generic-vrf
+          - show vlan id {{ item.vlan }}
+          - show vxlan | inc {{ item.vlan | int + 10000 }}
+          - show system internal l2fwder mac | inc "  {{ item.vlan }}  "
+      with_items: "{{ vlan_info }}"
+      when: "'edge' in inventory_hostname"
+      register: edge_vlan_output
+
+    - name: Debug per-VLAN edge data (optional)
+      debug: var=edge_vlan_output
+      when: PRINT_DEBUG | default(False)
+
+    - name: Save VLAN-specific edge output to local file
+      blockinfile:
+        path: "{{ DIR_ROOT }}/{{ DIR_PRE }}/{{ inventory_hostname }}_interfaces"
+        marker: "### {mark} BLOCK GROUP 2 - VLAN {{ item.item.vlan }}"
+        block: |
+          ### show ip route {{ item.item.cidrnet }} vrf generic-vrf
+          {{ item.stdout[0] }}
+          ###
+          ### show vlan id {{ item.item.vlan }}
+          {{ item.stdout[1] }}
+          ###
+          ### show vxlan | inc {{ item.item.vlan | int + 10000 }}
+          {{ item.stdout[2] }}
+          ###
+          ### show system internal l2fwder mac | inc {{ item.item.vlan }}
+          {{ item.stdout[3] }}
+          ###
+      with_items: "{{ edge_vlan_output.results }}"
+      when: "'edge' in inventory_hostname"
+
+    # Step 6: Collect ARP data for each VLAN from gateway devices
+    - name: Collect ARP data per VLAN (gateway devices only)
+      nxos_command:
+        commands:
+          - show ip arp {{ item.vlann }}
+      with_items: "{{ vlan_info }}"
+      when: "'gateway' in inventory_hostname"
+      register: arp_output
+
+    - name: Debug ARP data (optional)
+      debug: var=arp_output
+      when: PRINT_DEBUG | default(False)
+
+    - name: Save ARP data to local file
+      blockinfile:
+        create: yes
+        path: "{{ DIR_ROOT }}/{{ DIR_PRE }}/{{ inventory_hostname }}_arp"
+        marker: "### {mark} BLOCK GROUP 3 - ARP {{ item.item.vlan }}"
+        block: |
+          ### show ip arp {{ item.item.vlann }}
+          {{ item.stdout[0] }}
+          ###
+      with_items: "{{ arp_output.results }}"
+      when: "'gateway' in inventory_hostname"
+

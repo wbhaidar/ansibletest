@@ -1,0 +1,49 @@
+# Playbook: Pre-Migration Config Generation for Network Devices
+# Description: Generates pre-migration configuration files from VLAN data for edge switches and optionally for firewalls.
+
+- name: Generate Pre-Migration Config Files
+  hosts: all_switches_and_firewalls
+  gather_facts: no
+
+  vars_files:
+    - vars.yml
+
+  vars:
+    vl: "Vlan"
+    vlan_info: "{{ lookup('file', DIR_ROOT ~ '/' ~ FILE_VLAN_INFO) }}"
+
+  tasks:
+
+    # Step 1: Capture timestamp
+    - name: Get system timestamp
+      shell: "date +%Y-%m-%d@%H:%M:%S"
+      register: tstamp_out
+
+    - name: Set timestamp as fact
+      set_fact:
+        tstamp: "{{ tstamp_out.stdout }}"
+
+    # Step 2: Debug VLAN info if enabled
+    - name: Debug VLAN data loaded from file
+      debug: var=vlan_info
+      when: PRINT_DEBUG | default(False)
+
+    # Step 3: Generate config for edge switches
+    - name: Generate pre-migration config for edge switches
+      blockinfile:
+        create: yes
+        marker: "!!! {mark} VLAN {{ item.vlan }}"
+        block: "{{ lookup('template', 'templates/' ~ leaf_type ~ '.j2') }}"
+        path: "{{ DIR_ROOT }}/{{ DIR_PREP }}/{{ inventory_hostname }}-prep.cfg"
+      when: "'edge' in inventory_hostname"
+      with_items: "{{ vlan_info }}"
+
+    # Step 4: Optionally generate config for firewalls
+    - name: Generate pre-migration config for firewalls
+      blockinfile:
+        create: yes
+        marker: "!!! {mark} VLAN {{ item.vlan }}"
+        block: "{{ lookup('template', 'templates/' ~ leaf_type ~ '.j2') }}"
+        path: "{{ DIR_ROOT }}/{{ DIR_PREP }}/{{ inventory_hostname }}-prep.cfg"
+      when: "'firewall' in inventory_hostname"
+      with_items: "{{ vlan_info }}"

@@ -1,0 +1,28 @@
+---
+# Playbook: VLAN Active Change Process
+# Description: Loops through VLANs to execute migration tasks via included subtasks.
+
+- name: VLAN Active Change Loop
+  hosts: network_devices  # Use a generic inventory group instead of hardcoded hostnames
+  gather_facts: no
+  vars_files:
+    - vars.yml
+
+  vars:
+    vl: "Vlan"
+    vlan_info: "{{ lookup('file', DIR_ROOT ~ '/' ~ FILE_VLAN_INFO) }}"
+
+  tasks:
+    # Debug: Print loaded VLAN info for troubleshooting
+    - name: Print loaded VLAN information
+      debug:
+        var: vlan_info
+      when: PRINT_DEBUG | default(false)
+
+    # Loop through each VLAN and include migration tasks
+    - name: Process each VLAN in migration list
+      include_tasks: 5a_active_change_inner_loop.yml
+      loop: "{{ vlan_info }}"
+      loop_control:
+        loop_var: outer_item
+        extended: yes

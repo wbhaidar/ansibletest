@@ -1,0 +1,23 @@
+# Playbook: Apply Pre-Migration Configuration to Firewalls
+# Description: Applies system and user context configurations using pre-generated files.
+
+- name: Apply Pre-Migration Config to Firewalls
+  hosts: FW_Admin
+  gather_facts: no
+
+  vars_files:
+    - vars.yml
+
+  tasks:
+
+    # Step 1: Apply SYSTEM CONTEXT configuration
+    - name: Apply system context configuration
+      asa_config:
+        match: none
+        src: "{{ DIR_ROOT }}/{{ DIR_PREP }}/{{ inventory_hostname }}_system_context-prep.conf"
+
+    # Step 2: Apply USER CONTEXT configuration
+    - name: Apply user context configuration
+      asa_config:
+        match: none
+        src: "{{ DIR_ROOT }}/{{ DIR_PREP }}/{{ inventory_hostname }}_user_context-prep.conf"

@@ -1,0 +1,159 @@
+# Playbook: Collect Network Info from Firewalls
+# Description: This playbook collects configuration and health data from generic firewall devices.
+
+- name: Collect Pre-Migration Data from Firewalls
+  hosts: all_firewalls
+  gather_facts: no
+
+  vars_files:
+    - vars.yml
+
+  vars:
+    vl: "Vlan"
+    vlan_info: "{{ lookup('file', DIR_ROOT ~ '/' ~ FILE_VLAN_INFO) }}"
+
+  tasks:
+
+    # Step 1: Capture timestamp
+    - name: Get system timestamp
+      shell: "date +%Y-%m-%d@%H:%M:%S"
+      register: tstamp_out
+
+    - name: Set timestamp as fact
+      set_fact:
+        tstamp: "{{ tstamp_out.stdout }}"
+
+    # Step 2: Debug loaded VLAN info
+    - name: Debug loaded VLAN info from file (optional)
+      debug: var=vlan_info
+      when: PRINT_DEBUG | default(False)
+
+    # Step 3: Backup running configuration
+    - name: Backup firewall configuration to local directory
+      asa_config:
+        save: yes
+        backup: yes
+        backup_options:
+          dir_path: "{{ DIR_ROOT }}/{{ DIR_PRE }}"
+      register: config_backup
+
+    - name: Debug config backup output (optional)
+      debug: var=config_backup
+      when: PRINT_DEBUG | default(False)
+
+    # Step 4: Collect health and interface info
+    - name: Collect health and interface data from firewalls
+      asa_command:
+        commands:
+          - show clock
+          - show cpu usage
+          - show memory detail
+          - show interface
+          - show int ip brief
+          - show route
+          - show arp
+          - show run
+          - show clock
+      register: health_output
+
+    - name: Save health and interface data to local file
+      blockinfile:
+        create: yes
+        marker: "### {mark}  BLOCK GROUP 1"
+        path: "{{ DIR_ROOT }}/{{ DIR_PRE }}/{{ inventory_hostname }}_pre_health_checks"
+        block: |
+          ### show clock
+          {{ health_output.stdout[0] }}
+          ###
+          ### show cpu usage
+          {{ health_output.stdout[1] }}
+          ###
+          ### show memory detail
+          {{ health_output.stdout[2] }}
+          ###
+          ### show interface
+          {{ health_output.stdout[3] }}
+          ###
+          ### show int ip brief
+          {{ health_output.stdout[4] }}
+          ###
+          ### show route
+          {{ health_output.stdout[5] }}
+          ###
+          ### show arp
+          {{ health_output.stdout[6] }}
+          ###
+      when: "'firewall' in inventory_hostname"
+
+    - name: Debug firewall health data (optional)
+      debug: var=health_output
+      when: PRINT_DEBUG | default(False)
+
+    # -------------------------------------------------------------------
+    # ❗ Optional future tasks commented out below for reference
+    # -------------------------------------------------------------------
+
+    # - name: Collect per-VLAN data from leaf switches
+    #   nxos_command:
+    #     commands:
+    #       - show ip route {{ item.cidrnet }} vrf some-vrf
+    #       - show vlan id {{ item.vlan }}
+    #       - show vxlan | inc {{ item.vlan | int + 10000 }}
+    #       - show system internal l2fwder mac | inc "  {{ item.vlan }}  "
+    #   with_items: "{{ vlan_info }}"
+    #   when: "'leaf' in inventory_hostname"
+    #   register: vlan_leaf_output
+
+    # - name: Debug per-VLAN leaf output
+    #   debug: var=vlan_leaf_output
+    #   when: PRINT_DEBUG | default(False)
+
+    # - name: Save VLAN data from leaf switches to local file
+    #   blockinfile:
+    #     path: "{{ DIR_PRE }}/{{ inventory_hostname }}_interfaces"
+    #     marker: "### {mark} BLOCK GROUP 2 - VLAN {{ item.item.vlan }}"
+    #     block: |
+    #       ### show ip route {{ item.item.cidrnet }}
+    #       {{ item.stdout[0] }}
+    #       ###
+    #       ### show vlan id {{ item.item.vlan }}
+    #       {{ item.stdout[1] }}
+    #       ###
+    #       ### show vxlan | inc {{ item.item.vlan | int + 10000 }}
+    #       {{ item.stdout[2] }}
+    #       ###
+    #       ### show system internal l2fwder mac | inc {{ item.item.vlan }}
+    #       {{ item.stdout[3] }}
+    #       ###
+    #   with_items: "{{ vlan_leaf_output.results }}"
+    #   when: "'leaf' in inventory_hostname"
+
+    # - name: Perform NMAP scan per VLAN
+    #   shell: "nmap -sn -oX {{ DIR_PRE }}/nmap_scan_before_{{ item.netaddr }} {{ item.cidrnet }}"
+    #   register: nmap_xml
+    #   with_items: "{{ vlan_info }}"
+    #   run_once: true
+
+    # - name: Debug NMAP scan output
+    #   debug: var=nmap_xml
+    #   run_once: true
+
+    # - name: Collect ARP data per VLAN (gateway devices)
+    #   nxos_command:
+    #     commands:
+    #       - show ip arp {{ item.vlann }}
+    #   with_items: "{{ vlan_info }}"
+    #   when: "'gateway' in inventory_hostname"
+    #   register: arp_output
+
+    # - name: Save ARP data to local file
+    #   blockinfile:
+    #     create: yes
+    #     path: "{{ DIR_PRE }}/{{ inventory_hostname }}_arp"
+    #     marker: "### {mark} BLOCK GROUP 3 - ARP {{ item.item.vlan }}"
+    #     block: |
+    #       ### show ip arp {{ item.item.vlann }}
+    #       {{ item.stdout[0] }}
+    #       ###
+    #   with_items: "{{ arp_output.results }}"
+    #   when: "'gateway' in inventory_hostname"

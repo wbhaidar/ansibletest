@@ -1,0 +1,220 @@
+# Playbook: Collect VLAN and VRRP Information
+# Description: Collects VLAN information from a generic network device, filters based on existence and VRRP configuration,
+#              enriches with CIDR/network data, and stores final results locally.
+
+- name: Collect VLAN and VRRP Info from Generic Core Device
+  hosts: network_core_device
+  gather_facts: no
+
+  vars_files:
+    - vars.yml
+
+  vars:
+    vl: "Vlan"  # Prefix used in interface names
+
+  tasks:
+
+    # Step 1: Gather NX-OS facts
+    - name: Gather all NX-OS facts from device
+      nxos_facts:
+        gather_subset: all
+      register: device_facts
+
+    # Step 2: Identify VLANs that are missing on the device
+    - name: Find VLANs missing on the device
+      set_fact:
+        missing_vlans: "{{ missing_vlans | default([]) + [item] }}"
+      with_items: "{{ vlan_list }}"
+      when: device_facts.ansible_facts.ansible_net_interfaces[vl + item|string] is undefined
+
+    - name: Display missing VLANs
+      debug:
+        msg: "VLAN {{ item }} not found on device and will be removed"
+      with_items: "{{ missing_vlans }}"
+
+    - name: Remove missing VLANs from the list
+      set_fact:
+        vlan_list: "{{ vlan_list | difference(missing_vlans) }}"
+      when: missing_vlans | length > 0
+
+    # Step 3: Deduplicate VLAN list
+    - name: Remove duplicate VLANs
+      set_fact:
+        vlan_list: "{{ vlan_list | unique }}"
+
+    # Step 4: Debug interface facts for valid VLANs
+    - name: Debug VLAN interfaces (optional)
+      debug:
+        var: device_facts.ansible_facts.ansible_net_interfaces[vl + item|string]
+      with_items: "{{ vlan_list }}"
+      when: PRINT_DEBUG | default(False)
+
+    # Step 5: Extract IP and mask for each VLAN
+    - name: Extract IP and subnet mask for each VLAN
+      set_fact:
+        vlan: "{{ item }}"
+        vlann: "{{ vl + item|string }}"
+        ip: "{{ device_facts.ansible_facts.ansible_net_interfaces[vl + item|string].ipv4.address }}"
+        mask: "{{ device_facts.ansible_facts.ansible_net_interfaces[vl + item|string].ipv4.masklen }}"
+      with_items: "{{ vlan_list }}"
+      register: vlan_fact_list
+
+    - name: Aggregate VLAN fact data
+      set_fact:
+        vlan_info: "{{ vlan_info | default([]) + (vlan_fact_list.results | map(attribute='ansible_facts') | list) }}"
+
+    - name: Debug VLAN info list (optional)
+      debug:
+        var: vlan_info
+      when: PRINT_DEBUG | default(False)
+
+    # Step 6: Enrich VLAN data with IP and mask
+    - name: Construct structured VLAN IP and mask data
+      set_fact:
+        vlan_info2: "{{ vlan_info2 | default([]) + [ {
+          'vlan': item.vlan,
+          'ip': device_facts.ansible_facts.ansible_net_interfaces[item.vlann].ipv4.address,
+          'mask': device_facts.ansible_facts.ansible_net_interfaces[item.vlann].ipv4.masklen,
+          'vlann': item.vlann
+        } ] }}"
+      with_items: "{{ vlan_info }}"
+
+    - name: Debug structured VLAN data (optional)
+      debug:
+        var: vlan_info2
+      when: PRINT_DEBUG | default(False)
+
+    # Step 7: Add CIDR to each VLAN
+    - name: Add CIDR notation to each VLAN entry
+      set_fact:
+        tmp1: "{{ item | combine({'cidr1': item.ip + '/' + item.mask }) }}"
+      with_items: "{{ vlan_info2 }}"
+      register: tmp1vlan
+
+    - name: Extract CIDR-enhanced VLAN data
+      set_fact:
+        vlan_info3: "{{ tmp1vlan.results | map(attribute='ansible_facts.tmp1') | list }}"
+
+    - name: Debug CIDR info (optional)
+      debug:
+        var: vlan_info3
+      when: PRINT_DEBUG | default(False)
+
+    # Step 8: Calculate network addresses
+    - name: Add network and netmask to each VLAN
+      set_fact:
+        tmp2: "{{ item | combine({
+          'cidrnet': item.cidr1 | ipaddr('0'),
+          'netaddr': item.cidr1 | ipaddr('0') | ipaddr('network'),
+          'netmask': item.cidr1 | ipaddr('netmask')
+        }) }}"
+      with_items: "{{ vlan_info3 }}"
+      register: tmp2vlan
+
+    - name: Extract full network data
+      set_fact:
+        vlan_info4: "{{ tmp2vlan.results | map(attribute='ansible_facts.tmp2') | list }}"
+
+    - name: Debug network data (optional)
+      debug:
+        var: vlan_info4
+      when: PRINT_DEBUG | default(False)
+
+    # Step 9: Collect VRRP information
+    - name: Collect VRRP data for each VLAN interface
+      nxos_command:
+        commands:
+          - show vrrp detail interface {{ item.vlann }} | json
+      with_items: "{{ vlan_info4 }}"
+      register: vrrp_out
+
+    - name: Debug VRRP output (optional)
+      debug:
+        var: vrrp_out
+      when: PRINT_DEBUG | default(False)
+
+    - name: Identify VLANs with multiple VRRP groups
+      set_fact:
+        multiple_vrrp_groups: "{{ multiple_vrrp_groups | default([]) + [item.item.vlan] }}"
+      with_items: "{{ vrrp_out.results }}"
+      when: item.stdout[0].TABLE_vrrp_group.ROW_vrrp_group is not mapping
+
+    - name: Debug VLANs with multiple VRRP groups
+      debug:
+        msg: "VLAN {{ item }} has multiple VRRP groups and will be excluded"
+      with_items: "{{ multiple_vrrp_groups }}"
+      when: multiple_vrrp_groups is defined
+
+    - name: Filter VLANs without multiple VRRP groups
+      set_fact:
+        vlan_info44: "{{ vlan_info44 | default([]) + [item] }}"
+      with_items: "{{ vlan_info4 }}"
+      when: multiple_vrrp_groups is defined and item.vlan | int not in multiple_vrrp_groups
+
+    - name: Map valid VRRP data to interfaces
+      set_fact:
+        tmp3vrrp: "{{ tmp3vrrp | default({}) | combine({
+          item.item.vlann: item.stdout[0].TABLE_vrrp_group.ROW_vrrp_group
+        }) }}"
+      with_items: "{{ vrrp_out.results }}"
+      when: item.stdout[0].TABLE_vrrp_group.ROW_vrrp_group is mapping
+
+    - name: Debug structured VRRP data (optional)
+      debug:
+        var: tmp3vrrp
+      when: PRINT_DEBUG | default(False)
+
+    # Step 10: Merge VRRP data back into VLAN info
+    - name: Merge VRRP data (if multiple VRRP groups were filtered)
+      set_fact:
+        vlan_info5: "{{ vlan_info5 | default([]) + [item | combine({'vrrp': tmp3vrrp[item.vlann]})] }}"
+      with_items: "{{ vlan_info44 }}"
+      when: vlan_info44 is defined
+
+    - name: Merge VRRP data (if no filtering was required)
+      set_fact:
+        vlan_info5: "{{ vlan_info5 | default([]) + [item | combine({'vrrp': tmp3vrrp[item.vlann]})] }}"
+      with_items: "{{ vlan_info4 }}"
+      when: vlan_info44 is not defined
+
+    - name: Debug final VLAN+VRRP structure (optional)
+      debug:
+        var: vlan_info5
+      when: PRINT_DEBUG | default(False)
+
+    # Step 11: Enrich with detailed VLAN info
+    - name: Gather detailed VLAN info from device
+      nxos_command:
+        commands:
+          - show vlan id {{ item.vlan }} | json
+      with_items: "{{ vlan_info5 }}"
+      register: vlan_out
+
+    - name: Map VLAN details to structured format
+      set_fact:
+        tmp4vlan: "{{ tmp4vlan | default({}) | combine({
+          item.item.vlann: item.stdout[0].TABLE_vlanbriefid.ROW_vlanbriefid
+        }) }}"
+      with_items: "{{ vlan_out.results }}"
+
+    - name: Combine full VLAN info with detailed attributes
+      set_fact:
+        vlan_info6: "{{ vlan_info6 | default([]) + [item | combine({'vlan_detail': tmp4vlan[item.vlann]})] }}"
+      with_items: "{{ vlan_info5 }}"
+
+    - name: Debug final VLAN dataset (optional)
+      debug:
+        var: vlan_info6
+      when: PRINT_DEBUG | default(False)
+
+    # Step 12: Store output to file
+    - name: Create output directory if not exists
+      file:
+        path: "{{ DIR_ROOT }}/working"
+        state: directory
+
+    - name: Save VLAN dataset to local file
+      local_action:
+        module: copy
+        content: "{{ vlan_info6 }}"
+        dest: "{{ DIR_ROOT }}/{{ FILE_VLAN_INFO }}"

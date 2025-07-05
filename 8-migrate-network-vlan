@@ -1,0 +1,85 @@
+---
+# Playbook: VLAN Migration Sequence
+# Description: Automates migration process per VLAN including VRRP changes, route programming, and MAC forwarding.
+
+- name: Start VLAN Migration Sequence
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - vars.yml
+
+  tasks:
+
+    # Step 1: Print Migration Banner (once)
+    - name: Print Migration Start Banner
+      debug:
+        msg:
+          - "##########################################################"
+          - "#### STARTING MIGRATION SEQUENCE FOR VLAN {{ outer_item.vlan }} ####"
+          - "##########################################################"
+      run_once: true
+
+    # Step 2: Print VLAN info for debugging
+    - name: Debug VLAN info
+      debug:
+        var: outer_item
+      when: PRINT_DEBUG | default(false)
+
+    # Step 3: Promote VRRP priority on backup gateway to trigger failover
+    - name: Promote VRRP Priority on Backup Gateway
+      nxos_vrrp:
+        interface: "{{ outer_item.vlann }}"
+        group: "{{ outer_item.vrrp.sh_group_id }}"
+        priority: "150"
+        vip: "{{ outer_item.vrrp.sh_vip_addr }}"
+      when: >
+        outer_item.vrrp.sh_group_state == "Backup" and
+        inventory_hostname in groups['backup_gateways']
+
+    # Step 4: Add static route for VLAN
+    - name: Add static route for VLAN
+      nxos_static_route:
+        prefix: "{{ outer_item.cidrnet }}"
+        next_hop: "{{ site_firewall_front_ip }}"
+        pref: "{{ STATIC_ROUTE_PREF }}"
+        vrf: "{{ DC_VRF }}"
+        route_name: "FW-BACK-{{ outer_item.vlan_detail['vlanshowbr-vlanname'] }}"
+      when: inventory_hostname in groups['leaf_switches']
+
+    # Step 5: Disable VLAN interface on backup gateway
+    - name: Disable VLAN Interface on Backup Gateway
+      nxos_interfaces:
+        config:
+          - name: "{{ outer_item.vlann }}"
+            enabled: false
+        state: merged
+      when: inventory_hostname in groups['backup_gateways']
+
+    # Step 6: Program VRRP MAC forwarding
+    - name: Program VRRP MAC forwarding on switch
+      nxos_config:
+        lines:
+          - >
+            mac address-table static {{ outer_item.vrrp.sh_vmac }}
+            vlan {{ outer_item.vlan }}
+            interface {{ vrrp_mac_forwarding_intf }}
+      when: inventory_hostname in groups['leaf_switches']
+
+    # Step 7: Enable firewall context subinterface
+    - name: Enable Firewall Context Subinterface
+      asa_config:
+        lines:
+          - no shutdown
+        parents:
+          - "interface {{ FW_USER_CONTEXT_BACK_INTF }}.{{ outer_item.vlan }}"
+      when: inventory_hostname in groups['firewall_admin']
+
+    # Step 8: Program firewall MAC forwarding
+    - name: Program MAC Forwarding to Firewall Back Interface
+      nxos_config:
+        lines:
+          - >
+            mac address-table static {{ outer_item.vrrp.sh_vmac }}
+            vlan {{ outer_item.vlan }}
+            interface {{ fw_back_interface }}
+      when: inventory_hostname in groups['leaf_switches']

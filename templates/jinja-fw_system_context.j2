@@ -1,0 +1,14 @@
+!
+!
+{% if TOPOLOGY == 'virtual' %}
+!
+{% elif TOPOLOGY == 'hardware' %}
+interface Port-channel10.{{item.vlan}}
+ description INT-{{SITE}}-FW-{{item.vlan_detail['vlanshowbr-vlanname']}} 
+ vlan {{item.vlan}} 
+!
+!
+context CONTEXT1
+  allocate-interface Port-channel10.{{item.vlan}}
+!
+{% endif %}

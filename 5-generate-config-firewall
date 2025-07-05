@@ -1,0 +1,47 @@
+# Playbook: Pre-Migration Config Generation for Firewalls
+# Description: Generates system and user context configuration files for firewalls based on VLAN data.
+
+- name: Generate Pre-Migration Config Files for Firewalls
+  hosts: firewalls_admin
+  gather_facts: no
+
+  vars_files:
+    - vars.yml
+
+  vars:
+    vl: "Vlan"
+    vlan_info: "{{ lookup('file', DIR_ROOT ~ '/' ~ FILE_VLAN_INFO) }}"
+
+  tasks:
+
+    # Step 1: Get current timestamp from the device
+    - name: Get system timestamp
+      shell: "date +%Y-%m-%d@%H:%M:%S"
+      register: tstamp_out
+
+    - name: Set timestamp as a fact
+      set_fact:
+        tstamp: "{{ tstamp_out.stdout }}"
+
+    # Step 2: Print VLAN information for debugging (optional)
+    - name: Debug VLAN data loaded from file
+      debug: var=vlan_info
+      when: PRINT_DEBUG | default(False)
+
+    # Step 3: Generate system context configuration
+    - name: Generate SYSTEM CONTEXT config for firewall
+      blockinfile:
+        create: yes
+        marker: "!!! {mark} VLAN {{ item.vlan }}"
+        block: "{{ lookup('template', 'templates/fw_system_context.j2') }}"
+        path: "{{ DIR_ROOT }}/{{ DIR_PREP }}/{{ inventory_hostname }}_system_context-prep.conf"
+      with_items: "{{ vlan_info }}"
+
+    # Step 4: Generate user context configuration
+    - name: Generate USER CONTEXT config for firewall
+      blockinfile:
+        create: yes
+        marker: "!!! {mark} VLAN {{ item.vlan }}"
+        block: "{{ lookup('template', 'templates/fw_user_context.j2') }}"
+        path: "{{ DIR_ROOT }}/{{ DIR_PREP }}/{{ inventory_hostname }}_user_context-prep.conf"
+      with_items: "{{ vlan_info }}"
