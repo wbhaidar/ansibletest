@@ -4,11 +4,11 @@ ip prefix-list {{DC_NS_PREFIX_NAME}} permit {{item.cidrnet}}
 !
 vrf context VRF1
 {% if SITE == 'SITE1' %}
-    ip route {{item.cidrnet}} {{DC_BW_NS_FW_FRONT_IP}} name {{ROUTE_REMARK_PREFIX}}_{{item.vlan_detail['vlanshowbr-vlanname']}} 250
+    ip route {{item.cidrnet}} {{DC_SITE1_NS_FW_FRONT_IP}} name {{ROUTE_REMARK_PREFIX}}_{{item.vlan_detail['vlanshowbr-vlanname']}} 250
 {% elif SITE == 'SITE2' %}
-    ip route {{item.cidrnet}} {{DC_NW_NS_FW_FRONT_IP}} name {{ROUTE_REMARK_PREFIX}}_{{item.vlan_detail['vlanshowbr-vlanname']}} 250
+    ip route {{item.cidrnet}} {{DC_SITE2_NS_FW_FRONT_IP}} name {{ROUTE_REMARK_PREFIX}}_{{item.vlan_detail['vlanshowbr-vlanname']}} 250
 {% elif SITE == 'SITE3' %}
-    ip route {{item.cidrnet}} {{DC_PAE_NS_FW_FRONT_IP}} name {{ROUTE_REMARK_PREFIX}}_{{item.vlan_detail['vlanshowbr-vlanname']}} 250
+    ip route {{item.cidrnet}} {{DC_SITE3_NS_FW_FRONT_IP}} name {{ROUTE_REMARK_PREFIX}}_{{item.vlan_detail['vlanshowbr-vlanname']}} 250
 {% else %}
 ip route XXXXXXXXXXXXXXXX ERRRO XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 {% endif %}
@@ -19,7 +19,7 @@ interface {{DC_FW_BACK_PO}}
     switchport trunk allowed vlan add {{item.vlan}}
 !
 {% elif SITE == 'SITE3' %}
-interface {{DC_FW_BACK_SITE3_INT}}
+interface {{DC_FW_BACK_SITE3_INT}}switchport
     switchport trunk allowed vlan add {{item.vlan}}
 !
 {% else %}
